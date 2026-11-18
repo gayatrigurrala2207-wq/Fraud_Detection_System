@@ -12,9 +12,8 @@ Fraud_detection_System/
 │   └── workflows/          # CI workflows (reserved)
 ├── .vscode/
 │   └── settings.json       # Explorer exclusions for local tooling files
-├── apps/                   # User-facing application services
-│   ├── backend/            # Planned FastAPI analyst API
-│   └── frontend/           # Planned React analyst UI
+├── backend/                # Planned FastAPI analyst API (REST + WebSockets)
+├── frontend/               # Planned React + TypeScript analyst UI
 ├── configs/                # Shared versioned configuration (reserved)
 ├── data/                   # Local data, ignored by Git except placeholders
 │   ├── raw/                # Original Kaggle ZIP, never modified
@@ -49,7 +48,8 @@ Local-only directories such as `.venv/`, `.uv-cache/`, `.uv-python/`, and `.pyte
 
 | Directory | Responsibility |
 | --- | --- |
-| `apps/` | Deployable services that analysts interact with. The backend owns the REST and WebSocket API; the frontend owns the analyst workspace. |
+| `backend/` | The analyst API service. Owns REST and WebSocket endpoints, persistence, and case actions; imports scoring code from `ml/inference`. |
+| `frontend/` | The analyst workspace UI. Talks to the backend only through its API and has its own JavaScript toolchain, separate from the Python project. |
 | `ml/` | Everything for offline modeling: dataset validation, features, training, evaluation, and the inference code the scoring service will import. Modules are imported as `ml.<stage>.<module>` from the repository root. |
 | `pipelines/` | Event-streaming code. Producers replay historical transactions; consumers validate, enrich, and score them. |
 | `infrastructure/` | Local service definitions and operational tooling such as monitoring. |
@@ -61,7 +61,7 @@ Local-only directories such as `.venv/`, `.uv-cache/`, `.uv-python/`, and `.pyte
 
 ### How the components interact
 
-In the planned application, the replay producer in `pipelines/producers` publishes transactions read from `data/raw`. The consumer in `pipelines/consumers` validates each event, builds features with `ml/features`, and scores it with `ml/inference`. Scores and cases are persisted and exposed by `apps/backend` to `apps/frontend`. `infrastructure/` hosts the local services and monitoring. See [Architecture](docs/architecture.md) for the full flow.
+In the planned application, the replay producer in `pipelines/producers` publishes transactions read from `data/raw`. The consumer in `pipelines/consumers` validates each event, builds features with `ml/features`, and scores it with `ml/inference`. Scores and cases are persisted and exposed by `backend/` to `frontend/`. `infrastructure/` hosts the local services and monitoring. See [Architecture](docs/architecture.md) for the full flow.
 
 ## Local setup
 
