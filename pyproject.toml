@@ -1,0 +1,14 @@
+[project]
+name = "fraudshield"
+version = "0.1.0"
+description = "Local-first financial fraud detection platform"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8.4,<9"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-config --strict-markers -p no:cacheprovider"
