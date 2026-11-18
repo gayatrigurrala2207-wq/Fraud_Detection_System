@@ -1,6 +1,34 @@
 # FraudShield
 
-FraudShield is a local-first portfolio project for scoring financial transactions, explaining fraud risk, and supporting analyst investigations. The current implementation (Phase 2) validates the original transaction dataset in a reproducible Python environment. The remaining components are reserved directories that later phases fill in; see the [roadmap](docs/roadmap.md).
+FraudShield is a local-first portfolio project for scoring financial transactions, explaining fraud risk, and supporting analyst investigations. The current implementation validates the original transaction dataset (Phase 2) and runs a starter website: a FastAPI backend serving health, settings, and dataset validation results, and a React analyst UI with all nine required views. Views whose data comes from later phases show empty states until real results exist; see the [roadmap](docs/roadmap.md).
+
+## Run the website
+
+You need two terminals, both opened at the repository root. Prerequisites: [uv](https://docs.astral.sh/uv/getting-started/installation/) and [Node.js](https://nodejs.org/) 20.19 or newer.
+
+**Terminal 1 — backend API** (http://localhost:8000, interactive docs at http://localhost:8000/docs):
+
+```sh
+cd backend
+uv sync --locked
+uv run --locked python -m uvicorn app.main:app --reload --port 8000
+```
+
+**Terminal 2 — frontend UI** (http://localhost:5173):
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+Open http://localhost:5173. The **System Health** page should list the API as OK and show the dataset validation results; the Overview shows dataset totals. If a page says it cannot reach the backend, check that terminal 1 is still running. The frontend dev server forwards every `/api` request to port 8000.
+
+| Endpoint | Requirement | Returns |
+| --- | --- | --- |
+| `GET /api/health` | FR-12 | API status and the status of each dependency (dataset, model, PostgreSQL, Kafka, Redis). |
+| `GET /api/dataset/validation` | FR-01 | Aggregate validation results from `backend/data/reports/validation.json`. Never row-level data. |
+| `GET /api/settings` | FR-12 | Active non-secret configuration. |
 
 ## Repository layout
 
@@ -9,7 +37,10 @@ Open `Fraud_detection_System` directly as the folder in VS Code. Its workspace s
 ```text
 Fraud_detection_System/
 ├── backend/                    # Python project: ML, pipelines, API, and tests
-│   ├── app/                    # Planned FastAPI analyst API (REST + WebSockets)
+│   ├── app/                    # FastAPI analyst API
+│   │   ├── main.py             # App entry point (uvicorn app.main:app)
+│   │   ├── config.py           # Environment-based settings
+│   │   └── routes/             # health, dataset, settings endpoints
 │   ├── ml/                     # Offline machine learning (imported as ml.*)
 │   │   ├── preprocessing/      # Dataset validation CLI (implemented)
 │   │   ├── notebooks/          # Planned exploratory analysis
@@ -30,7 +61,16 @@ Fraud_detection_System/
 │   ├── pyproject.toml          # Python manifest and pytest configuration
 │   ├── uv.lock                 # Locked Python dependency versions
 │   └── README.md               # Backend command reference
-├── frontend/                   # Planned React + TypeScript analyst UI
+├── frontend/                   # React + TypeScript analyst UI (Vite, Tailwind CSS)
+│   ├── src/
+│   │   ├── components/         # Layout with the nine-view sidebar, shared UI pieces
+│   │   ├── pages/              # Overview, System Health, Settings, planned-view empty state
+│   │   ├── api.ts              # Typed backend client
+│   │   └── main.tsx            # Entry point
+│   ├── index.html
+│   ├── package.json            # npm scripts and dependencies (package-lock.json pins them)
+│   ├── tsconfig.json
+│   └── vite.config.ts          # Dev server on 5173, proxies /api to the backend
 ├── infrastructure/
 │   └── monitoring/             # Planned experiment tracking and drift monitoring
 ├── configs/                    # Shared versioned configuration (reserved)
@@ -51,13 +91,13 @@ Local-only directories such as `backend/.venv/`, `.uv-cache/`, `.uv-python/`, an
 | Directory | Used by | Responsibility |
 | --- | --- | --- |
 | `backend/` | Backend | Self-contained Python project with its own manifest, lockfile, and virtual environment. |
-| `backend/app/` | Backend | The analyst API service: REST and WebSocket endpoints, persistence, and case actions. |
+| `backend/app/` | Backend | The analyst API service. Today: health, settings, and dataset validation endpoints. Later: scoring, cases, WebSockets, and persistence. |
 | `backend/ml/` | Backend | Offline modeling: dataset validation, features, training, evaluation, and the inference code the API and consumers import. |
 | `backend/pipelines/` | Backend | Event streaming. Producers replay historical transactions; consumers validate, enrich, and score them. |
 | `backend/data/` | Backend | Local datasets and generated reports. Contents are ignored by Git; only folder placeholders are tracked. |
 | `backend/scripts/` | Backend | Backend developer and automation scripts. |
 | `backend/tests/` | Backend | The pytest suite. Tests use small synthetic fixtures and need no downloaded data. |
-| `frontend/` | Frontend | The analyst workspace UI. Talks to the backend only through its API and will have its own JavaScript toolchain. |
+| `frontend/` | Frontend | The analyst workspace UI. Talks to the backend only through `/api` and has its own npm toolchain. |
 | `infrastructure/` | Both | Local service definitions (Docker Compose) and operational tooling such as monitoring. |
 | `configs/` | Both | Versioned, non-secret configuration shared across components. Secrets belong in `.env`, never here. |
 | `docs/` | Both | Requirements, architecture, roadmap, decision log, progress, and validation results. |
@@ -97,6 +137,8 @@ $env:UV_CACHE_DIR = Join-Path $PWD '.uv-cache'
 $env:UV_PYTHON_INSTALL_DIR = Join-Path $PWD '.uv-python'
 ```
 
+If uv reports `invalid peer certificate: UnknownIssuer` (a network that inspects TLS traffic), also set `$env:UV_SYSTEM_CERTS = '1'` so uv trusts the Windows certificate store. Windows Application Control may block generated launchers such as `pytest.exe` and `uvicorn.exe`; the documented `python -m ...` commands avoid them.
+
 ## Testing
 
 ```sh
@@ -122,9 +164,11 @@ uv run --locked python -m ml.preprocessing.validate_dataset data/raw/fraud-detec
 
 The command prints an aggregate JSON report and returns exit code 0 for a passing archive, 1 for failed quality checks, or 2 for an unreadable archive or schema mismatch. The report also lists time-order and timestamp-representation warnings. To keep a copy, redirect the output to `data/reports/validation.json`. Keep source files in the ignored `backend/data/` directory and avoid sharing raw rows.
 
+Frontend checks, from `frontend/`: `npm run typecheck` checks types and `npm run build` produces a production bundle in `frontend/dist/` (ignored by Git).
+
 ## Build and deployment
 
-There is no build or deployment step yet: the dataset validator above is the current entry point. Application build, service startup (Docker Compose), frontend tooling, and CI (GitHub Actions) commands will be added to this README as those components are implemented.
+For local use, run the two dev servers described in [Run the website](#run-the-website). `npm run build` creates the static frontend bundle; `npm run preview` serves it for a final check. Container startup (Docker Compose) and CI (GitHub Actions) commands will be added as those components are implemented.
 
 ## Documentation
 

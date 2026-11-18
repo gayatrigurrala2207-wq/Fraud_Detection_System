@@ -5,6 +5,8 @@
     ".uv-python": true,
     ".pytest_cache": true,
     ".pytest_temp": true,
-    "**/__pycache__": true
+    "**/__pycache__": true,
+    "**/node_modules": true,
+    "**/dist": true
   }
 }
