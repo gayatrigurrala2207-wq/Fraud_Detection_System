@@ -1,11 +1,11 @@
 .PHONY: setup test check
 
 setup:
-	uv sync --locked
+	cd backend && uv sync --locked
 
 test:
-	uv run --locked python -m pytest
+	cd backend && uv run --locked python -m pytest
 
 check:
-	uv lock --check
-	uv run --locked python -m pytest
+	cd backend && uv lock --check
+	cd backend && uv run --locked python -m pytest

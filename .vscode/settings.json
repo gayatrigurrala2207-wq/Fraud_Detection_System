@@ -1,6 +1,6 @@
 {
   "files.exclude": {
-    ".venv": true,
+    "**/.venv": true,
     ".uv-cache": true,
     ".uv-python": true,
     ".pytest_cache": true,
