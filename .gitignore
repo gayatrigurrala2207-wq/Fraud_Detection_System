@@ -4,6 +4,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest_temp/
 .ipynb_checkpoints/
 .coverage
 htmlcov/
@@ -13,7 +14,12 @@ htmlcov/
 *.pem
 *.key
 /data/*
-!/data/.gitkeep
+!/data/raw/
+!/data/reports/
+/data/raw/*
+/data/reports/*
+!/data/raw/.gitkeep
+!/data/reports/.gitkeep
 /artifacts/
 /models/
 /mlruns/

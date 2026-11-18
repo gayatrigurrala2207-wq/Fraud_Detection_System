@@ -11,4 +11,5 @@ dev = ["pytest>=8.4,<9"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "--strict-config --strict-markers -p no:cacheprovider"
