@@ -1,7 +1,8 @@
 import { ArrowLeft, CheckCircle2, RotateCcw } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
-import { post, useApi, type CaseDetail as CaseData, type Explanation } from "../api";
+import { hasRole, post, useApi, type CaseDetail as CaseData, type Explanation } from "../api";
+import { useAuth } from "../auth";
 import { SERIES } from "../components/charts";
 import { Async, Button, Card, ErrorNotice, PageHeader, RiskBadge, SimulatedBadge, fmt, td, th } from "../components/ui";
 
@@ -23,6 +24,7 @@ function Workspace({ data, reload }: { data: CaseData; reload: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const canAct = hasRole(useAuth().user, "analyst");
 
   const act = async (path: string, body: unknown = {}) => {
     setBusy(true);
@@ -46,7 +48,7 @@ function Workspace({ data, reload }: { data: CaseData; reload: () => void }) {
   return (
     <>
       <PageHeader title={`Case #${c.id}`} requirement="FR-08"
-        actions={c.status === "open" ? (
+        actions={!canAct ? <span className="text-sm text-slate-500">View only</span> : c.status === "open" ? (
           <>
             <Button disabled={busy} variant={c.disposition === "fraud" ? "primary" : "danger"}
                     onClick={() => act("/label", { disposition: "fraud" })}>Label fraud</Button>
@@ -132,11 +134,11 @@ function Workspace({ data, reload }: { data: CaseData; reload: () => void }) {
                 </li>
               ))}
             </ul>
-            <form onSubmit={submitNote} className="flex gap-2">
+            {canAct && <form onSubmit={submitNote} className="flex gap-2">
               <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} placeholder="Add a note"
                      aria-label="Note" className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
               <Button type="submit" disabled={busy || !note.trim()}>Add</Button>
-            </form>
+            </form>}
           </Card>
           <Card title="Audit trail">
             <ol className="space-y-2 text-sm">

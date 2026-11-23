@@ -16,6 +16,12 @@ class Settings:
     environment: str
     data_dir: Path
     cors_origins: tuple[str, ...]
+    cookie_secure: bool = False
+
+    @property
+    def auth_db_path(self) -> Path:
+        """Accounts and sessions; separate from the replay database so rebuilds keep them."""
+        return self.data_dir / "auth" / "users.sqlite"
 
     @property
     def archive_path(self) -> Path:
@@ -46,6 +52,7 @@ def get_settings() -> Settings:
         environment=os.environ.get("FRAUDSHIELD_ENV", "development"),
         data_dir=data_dir if data_dir.is_absolute() else BACKEND_ROOT / data_dir,
         cors_origins=tuple(origin.strip() for origin in origins.split(",") if origin.strip()),
+        cookie_secure=os.environ.get("FRAUDSHIELD_COOKIE_SECURE", "false").lower() in ("1", "true", "yes"),
     )
 
 

@@ -7,7 +7,7 @@ from pathlib import Path
 import sqlite3
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, HTTPException
 
 from app.config import Settings, get_settings
 from app.db import connect
@@ -48,13 +48,6 @@ def read_json(path: Path) -> dict | list | None:
         return None
 
 
-def get_actor(x_analyst: Annotated[str | None, Header(max_length=40)] = None) -> str:
-    """Analyst name attributed in audit events (no authentication in local development)."""
-    name = (x_analyst or "").strip()
-    return name or "analyst"
-
-
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
 Model = Annotated[Scorer | None, Depends(get_scorer)]
 Config = Annotated[Settings, Depends(get_settings)]
-Actor = Annotated[str, Depends(get_actor)]

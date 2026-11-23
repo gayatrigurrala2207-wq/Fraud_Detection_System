@@ -7,8 +7,12 @@ from tempfile import TemporaryDirectory
 from fastapi.testclient import TestClient
 import pytest
 
+from app.auth import current_user
 from app.config import Settings, get_settings
 from app.main import app
+
+SIGNED_IN = {"id": 1, "username": "dana", "display_name": "Dana", "role": "admin", "active": True,
+             "created_at": "x", "last_login_at": None}
 
 REPORT = {
     "archive_sha256": "ab" * 32,
@@ -37,6 +41,7 @@ def client():
     with TemporaryDirectory() as directory:
         data_dir = Path(directory)
         app.dependency_overrides[get_settings] = lambda: Settings("test", data_dir, ("http://localhost:5173",))
+        app.dependency_overrides[current_user] = lambda: SIGNED_IN
         yield TestClient(app), data_dir
         app.dependency_overrides.clear()
 

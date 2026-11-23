@@ -7,9 +7,13 @@ from tempfile import TemporaryDirectory
 from fastapi.testclient import TestClient
 import pytest
 
+from app.auth import current_user
 from app.config import Settings, get_settings
 from app.db import connect, init_schema
 from app.main import app
+
+SIGNED_IN = {"id": 1, "username": "dana", "display_name": "Dana", "role": "admin", "active": True,
+             "created_at": "x", "last_login_at": None}
 
 
 def insert_transaction(db, tx_id, status, score, risk, amount=50.0):
@@ -37,6 +41,7 @@ def client():
             db.execute("INSERT INTO cases (id, transaction_id, created_at, updated_at) VALUES (1, 2, 'x', 'x')")
             db.commit()
         app.dependency_overrides[get_settings] = lambda: Settings("test", data_dir, ("http://localhost:5173",))
+        app.dependency_overrides[current_user] = lambda: SIGNED_IN
         yield TestClient(app)
         app.dependency_overrides.clear()
 
@@ -60,11 +65,11 @@ def test_feed_filters_and_reports_case_status(client):
 
 
 def test_case_workflow_is_attributed_and_audited(client):
-    headers = {"X-Analyst": "dana"}
-    assert client.post("/api/cases/1/resolve", headers=headers).status_code == 400
-    assert client.post("/api/cases/1/label", json={"disposition": "fraud"}, headers=headers).status_code == 200
-    assert client.post("/api/cases/1/notes", json={"body": "Called customer."}, headers=headers).status_code == 200
-    assert client.post("/api/cases/1/resolve", headers=headers).json()["status"] == "resolved"
+
+    assert client.post("/api/cases/1/resolve").status_code == 400
+    assert client.post("/api/cases/1/label", json={"disposition": "fraud"}).status_code == 200
+    assert client.post("/api/cases/1/notes", json={"body": "Called customer."}).status_code == 200
+    assert client.post("/api/cases/1/resolve").json()["status"] == "resolved"
 
     detail = client.get("/api/cases/1").json()
     assert detail["case"]["disposition"] == "fraud"
@@ -89,6 +94,7 @@ def test_replay_pause_and_reset(client):
 def test_missing_database_returns_503():
     with TemporaryDirectory() as directory:
         app.dependency_overrides[get_settings] = lambda: Settings("test", Path(directory), ())
+        app.dependency_overrides[current_user] = lambda: SIGNED_IN
         try:
             response = TestClient(app).get("/api/overview")
         finally:

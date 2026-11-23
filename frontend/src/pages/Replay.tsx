@@ -1,7 +1,8 @@
 import { FastForward, Pause, Play, RotateCcw } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { post, useApi, type Explanation, type ReplayStatus, type RiskLevel } from "../api";
+import { hasRole, post, useApi, type Explanation, type ReplayStatus, type RiskLevel } from "../api";
+import { useAuth } from "../auth";
 import { Async, Button, Card, ErrorNotice, PageHeader, RiskBadge, SimulatedBadge, fmt } from "../components/ui";
 
 const SPEEDS = [1, 5, 20, 50, 100];
@@ -10,6 +11,9 @@ export default function Replay() {
   const status = useApi<ReplayStatus>("/replay", 2000);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { user } = useAuth();
+  const canAct = hasRole(user, "analyst");
+  const isAdmin = hasRole(user, "admin");
 
   const command = async (body: object) => {
     setBusy(true);
@@ -44,17 +48,18 @@ export default function Replay() {
                   </div>
                   <p className="mt-1 text-xs text-slate-500">Replay clock: {s.last_event_time ?? "not started"}</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                {!canAct && <p className="text-sm text-slate-500">View only. Analysts can control the replay.</p>}
+                {canAct && <div className="flex flex-wrap gap-2">
                   {s.running ? <Button disabled={busy} onClick={() => command({ action: "pause" })}><Pause className="size-4" aria-hidden /> Pause</Button>
                     : <Button variant="primary" disabled={busy || s.remaining === 0} onClick={() => command({ action: "start" })}><Play className="size-4" aria-hidden /> Start</Button>}
                   <Button disabled={busy || s.remaining === 0} onClick={() => command({ action: "step", step_size: 1000 })}>
                     <FastForward className="size-4" aria-hidden /> Score next 1,000</Button>
-                  <Button variant="danger" disabled={busy} onClick={() => {
+                  {isAdmin && <Button variant="danger" disabled={busy} onClick={() => {
                     if (confirm("Reset the replay? This deletes all scores, cases, notes, audit events, and simulated transactions.")) command({ action: "reset" });
-                  }}><RotateCcw className="size-4" aria-hidden /> Reset</Button>
-                </div>
+                  }}><RotateCcw className="size-4" aria-hidden /> Reset</Button>}
+                </div>}
                 <label className="flex items-center gap-2 text-sm">Speed
-                  <select value={s.speed} disabled={busy} onChange={(e) => command({ action: s.running ? "start" : "pause", speed: Number(e.target.value) })}
+                  <select value={s.speed} disabled={busy || !canAct} onChange={(e) => command({ action: s.running ? "start" : "pause", speed: Number(e.target.value) })}
                           className="rounded-md border border-slate-300 bg-white px-2 py-1">
                     {[...new Set([...SPEEDS, s.speed])].sort((a, b) => a - b).map((v) => <option key={v} value={v}>{v} transactions / second</option>)}
                   </select>
@@ -63,7 +68,7 @@ export default function Replay() {
             )}
           </Async>
         </Card>
-        <Simulator />
+        {canAct ? <Simulator /> : <Card title="Manual transaction"><p className="text-sm text-slate-500">Analysts and admins can score manual transactions.</p></Card>}
       </div>
     </>
   );

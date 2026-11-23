@@ -29,14 +29,26 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. While the backend runs, its replay worker scores 5 transactions per second (change the speed, pause, fast-forward, or reset on **Replay & Simulator**). Flagged transactions open cases you can label, annotate, and resolve; set your analyst name under **Settings** so audit events are attributed to you. If a page says it cannot reach the backend, check that terminal 1 is still running. The frontend dev server forwards every `/api` request to port 8000.
+Open http://localhost:5173. **On first visit you create the administrator account**; after that the site shows a sign-in page. The administrator adds other people under **Users** with one of three roles:
+
+| Role | Can |
+| --- | --- |
+| Viewer | Read every page. |
+| Analyst | Viewer, plus label, annotate, resolve, and reopen cases; start, pause, and fast-forward the replay; use the simulator. |
+| Admin | Analyst, plus manage users (create, change role, disable, reset password) and reset the replay. |
+
+Passwords are stored as salted scrypt hashes. Sessions last 12 hours in an HttpOnly, SameSite=Lax cookie; tokens are stored server-side only as hashes. Five failed sign-ins for a username lock it for 15 minutes. Accounts live in `backend/data/auth/users.sqlite`, separate from the replay database, so `build_all` never deletes them. Every case action is recorded under the signed-in username. If you forget the only admin password, stop the backend and delete `backend/data/auth/users.sqlite` to run first-time setup again. Behind HTTPS, set `FRAUDSHIELD_COOKIE_SECURE=true`.
+
+While the backend runs, its replay worker scores 5 transactions per second (change the speed, pause, fast-forward, or reset on **Replay & Simulator**). Flagged transactions open cases you can label, annotate, and resolve. If a page says it cannot reach the backend, check that terminal 1 is still running. The frontend dev server forwards every `/api` request to port 8000.
 
 | Endpoint | Requirement | Returns |
 | --- | --- | --- |
+| `GET /api/auth/status`, `POST /api/auth/setup`, `/login`, `/logout`, `/password`, `GET /api/auth/me` | Access | Public sign-in and first-run setup; everything below requires a signed-in user. |
+| `GET/POST /api/users`, `PATCH /api/users/{id}`, `POST /api/users/{id}/password` | Access | Admin-only user management. |
 | `GET /api/overview` | FR-06 | Processed, flagged, high-risk, potential fraud value, predicted vs confirmed outcomes, latency, with definitions. |
 | `GET /api/transactions` | FR-07 | Live feed with `risk`, `status`, `source`, `q`, and `min_amount` filters. |
 | `GET /api/cases`, `GET /api/cases/{id}` | FR-08 | Case list; case evidence, SHAP explanation, behavioral anomalies, masked card history, notes, audit trail. |
-| `POST /api/cases/{id}/label`, `/notes`, `/resolve`, `/reopen` | FR-08 | Analyst actions, attributed via the `X-Analyst` header and audited. |
+| `POST /api/cases/{id}/label`, `/notes`, `/resolve`, `/reopen` | FR-08 | Analyst actions, attributed to the signed-in user and audited. |
 | `GET /api/analytics` | FR-09 | Fraud patterns from publisher labels plus the live score distribution. |
 | `GET /api/models` | FR-10 | Model comparison, test metrics, PR/ROC curves, confusion matrix, feature importance, latency. |
 | `GET /api/monitoring` | FR-10 | PSI drift vs the validation window, confirmed-label performance, experiment runs. |
@@ -55,11 +67,12 @@ Fraud_detection_System/
 ├── backend/                    # Python project: ML, pipelines, API, and tests
 │   ├── app/                    # FastAPI analyst API
 │   │   ├── main.py             # App entry point (uvicorn app.main:app); starts the replay worker
+│   │   ├── auth.py             # Password hashing, sessions, roles
 │   │   ├── config.py           # Environment-based settings and data locations
 │   │   ├── db.py               # SQLite schema: transactions, cases, notes, audit events
 │   │   ├── replay.py           # Background replay worker
 │   │   ├── services.py         # Shared request dependencies (database, model, analyst)
-│   │   └── routes/             # overview, transactions, cases, insights, replay, health, settings
+│   │   └── routes/             # auth/users, overview, transactions, cases, insights, replay, health, settings
 │   ├── ml/                     # Machine learning (imported as ml.*)
 │   │   ├── preprocessing/      # Dataset validation CLI and archive loader
 │   │   ├── features/           # Point-in-time feature engineering (FR-03)
@@ -73,6 +86,7 @@ Fraud_detection_System/
 │   ├── data/                   # Local data, ignored by Git except placeholders
 │   │   ├── raw/                # Original Kaggle ZIP, never modified
 │   │   ├── reports/            # Validation, model, analytics, and run reports
+│   │   ├── auth/               # User accounts and sessions (generated, kept across rebuilds)
 │   │   ├── models/             # Deployed model, metadata, drift reference (generated)
 │   │   └── processed/          # SQLite replay database (generated)
 │   ├── scripts/                # build_all.py: one command to build all data
@@ -85,7 +99,8 @@ Fraud_detection_System/
 ├── frontend/                   # React + TypeScript analyst UI (Vite, Tailwind CSS)
 │   ├── src/
 │   │   ├── components/         # Sidebar layout, charts (Recharts), shared UI pieces
-│   │   ├── pages/              # One page per view, plus the case detail workspace
+│   │   ├── pages/              # Sign-in/setup, one page per view, case workspace, users, account
+│   │   ├── auth.tsx            # Session state, sign-in, sign-out
 │   │   ├── api.ts              # Typed backend client
 │   │   └── main.tsx            # Entry point
 │   ├── index.html

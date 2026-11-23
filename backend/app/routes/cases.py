@@ -7,7 +7,8 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.db import audit, now, raw_features
-from app.services import Actor, Config, Db, Model, read_json
+from app.auth import AnalystUser
+from app.services import Config, Db, Model, read_json
 
 router = APIRouter(tags=["cases"])
 
@@ -108,7 +109,8 @@ def case_detail(case_id: int, db: Db, model: Model, config: Config) -> dict:
 
 
 @router.post("/cases/{case_id}/label")
-def label_case(case_id: int, request: LabelRequest, db: Db, actor: Actor) -> dict:
+def label_case(user: AnalystUser, case_id: int, request: LabelRequest, db: Db) -> dict:
+    actor = user["username"]
     case = _case(db, case_id)
     db.execute("UPDATE cases SET disposition = ?, updated_at = ? WHERE id = ?", (request.disposition, now(), case_id))
     previous = case["disposition"] or "unlabeled"
@@ -118,7 +120,8 @@ def label_case(case_id: int, request: LabelRequest, db: Db, actor: Actor) -> dic
 
 
 @router.post("/cases/{case_id}/notes")
-def add_note(case_id: int, request: NoteRequest, db: Db, actor: Actor) -> dict:
+def add_note(user: AnalystUser, case_id: int, request: NoteRequest, db: Db) -> dict:
+    actor = user["username"]
     _case(db, case_id)
     db.execute("INSERT INTO case_notes (case_id, author, body, created_at) VALUES (?, ?, ?, ?)",
                (case_id, actor, request.body.strip(), now()))
@@ -128,7 +131,8 @@ def add_note(case_id: int, request: NoteRequest, db: Db, actor: Actor) -> dict:
 
 
 @router.post("/cases/{case_id}/resolve")
-def resolve_case(case_id: int, db: Db, actor: Actor) -> dict:
+def resolve_case(user: AnalystUser, case_id: int, db: Db) -> dict:
+    actor = user["username"]
     case = _case(db, case_id)
     if case["disposition"] is None:
         raise HTTPException(status_code=400, detail="Label the case as fraud or legitimate before resolving it.")
@@ -141,7 +145,8 @@ def resolve_case(case_id: int, db: Db, actor: Actor) -> dict:
 
 
 @router.post("/cases/{case_id}/reopen")
-def reopen_case(case_id: int, db: Db, actor: Actor) -> dict:
+def reopen_case(user: AnalystUser, case_id: int, db: Db) -> dict:
+    actor = user["username"]
     case = _case(db, case_id)
     if case["status"] != "resolved":
         raise HTTPException(status_code=400, detail="Case is not resolved.")

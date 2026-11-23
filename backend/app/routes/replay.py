@@ -8,7 +8,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.db import now, raw_features
-from app.services import Actor, Db, Model
+from app.auth import AnalystUser
+from app.services import Db, Model
 from pipelines.consumers.scoring import process_pending, score_transaction
 
 router = APIRouter(tags=["replay"])
@@ -54,7 +55,9 @@ def replay_status(db: Db) -> dict:
 
 
 @router.post("/replay")
-def replay_command(command: ReplayCommand, db: Db, model: Model) -> dict:
+def replay_command(user: AnalystUser, command: ReplayCommand, db: Db, model: Model) -> dict:
+    if command.action == "reset" and user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Resetting the replay requires the admin role.")
     if command.speed is not None:
         db.execute("UPDATE replay_state SET speed = ? WHERE id = 1", (command.speed,))
     if command.action in ("start", "pause"):
@@ -83,7 +86,8 @@ def simulate_options(model: Model) -> dict:
 
 
 @router.post("/simulate")
-def simulate(request: SimulatedTransaction, db: Db, model: Model, actor: Actor) -> dict:
+def simulate(user: AnalystUser, request: SimulatedTransaction, db: Db, model: Model) -> dict:
+    actor = user["username"]
     if model is None:
         raise HTTPException(status_code=503, detail="No trained model.")
     if request.category not in model.spec["categories"]:

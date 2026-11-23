@@ -168,46 +168,63 @@ export interface ReplayStatus {
   last_event_time: string | null;
 }
 
-const ANALYST_KEY = "fraudshield.analyst";
+export type Role = "viewer" | "analyst" | "admin";
 
-export function getAnalyst(): string {
-  try {
-    return localStorage.getItem(ANALYST_KEY) || "analyst";
-  } catch {
-    return "analyst";
-  }
+export interface User {
+  id: number;
+  username: string;
+  display_name: string;
+  role: Role;
+  active: boolean;
+  created_at: string;
+  last_login_at: string | null;
 }
 
-export function setAnalyst(name: string): void {
-  try {
-    localStorage.setItem(ANALYST_KEY, name);
-  } catch {
-    /* storage unavailable: attribution falls back to "analyst" */
-  }
-}
+const RANK: Record<Role, number> = { viewer: 0, analyst: 1, admin: 2 };
+export const hasRole = (user: User | null, minimum: Role) => !!user && RANK[user.role] >= RANK[minimum];
+
+/** Fired when the server says the session is missing or expired; the auth provider returns to sign-in. */
+export const UNAUTHORIZED_EVENT = "fraudshield:unauthorized";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`/api${path}`, {
+      credentials: "same-origin",
       ...init,
-      headers: { "Content-Type": "application/json", "X-Analyst": getAnalyst(), ...init?.headers },
+      headers: { "Content-Type": "application/json", ...init?.headers },
     });
   } catch {
     throw new Error("Cannot reach the backend. Is it running on port 8000?");
   }
   const body = await response.json().catch(() => null);
+  if (response.status === 401 && !path.startsWith("/auth/")) {
+    window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+  }
   if (!response.ok) {
     const detail = body?.detail;
-    throw new Error(typeof detail === "string" ? detail : `Request failed with status ${response.status}.`);
+    if (typeof detail === "string") throw new Error(detail);
+    if (Array.isArray(detail)) {
+      // FastAPI validation errors: name the field and the problem.
+      throw new Error(detail.map((d: { loc?: string[]; msg?: string }) =>
+        `${String(d.loc?.at(-1) ?? "value").replaceAll("_", " ")}: ${d.msg ?? "invalid"}`).join("; "));
+    }
+    throw new Error(`Request failed with status ${response.status}.`);
   }
   return body as T;
 }
 
-export function post<T>(path: string, data: unknown): Promise<T> {
+export function get<T>(path: string): Promise<T> {
+  return request<T>(path);
+}
+
+export function post<T>(path: string, data: unknown = {}): Promise<T> {
   return request<T>(path, { method: "POST", body: JSON.stringify(data) });
 }
 
+export function patch<T>(path: string, data: unknown): Promise<T> {
+  return request<T>(path, { method: "PATCH", body: JSON.stringify(data) });
+}
 type State<T> = { state: "loading" } | { state: "error"; message: string } | { state: "ready"; data: T };
 type Result<T> = State<T> & { reload: () => void };
 
