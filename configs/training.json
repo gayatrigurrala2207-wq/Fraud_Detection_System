@@ -1,0 +1,9 @@
+{
+  "validation_start": "2020-01-01 00:00:00",
+  "investigation_cost_usd": 10.0,
+  "missed_fraud_cost_multiplier": 1.0,
+  "high_risk_score": 0.9,
+  "medium_fraction_of_threshold": 0.5,
+  "random_seed": 42,
+  "warm_start_transactions": 2000
+}

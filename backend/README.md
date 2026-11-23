@@ -7,6 +7,7 @@ The Python side of FraudShield: dataset validation and ML code (`ml/`), streamin
 | `uv sync --locked` | Creates `backend/.venv` with Python 3.12 and the locked dependencies. |
 | `uv lock --check` | Checks that `uv.lock` matches `pyproject.toml`. |
 | `uv run --locked python -m pytest` | Runs the test suite. |
+| `uv run --locked python -m scripts.build_all` | Trains the model and builds the replay database from `data/raw/fraud-detection.zip` (about 12 minutes). |
 | `uv run --locked python -m uvicorn app.main:app --reload --port 8000` | Starts the API on http://localhost:8000 (docs at `/docs`). |
 | `uv run --locked python -m ml.preprocessing.validate_dataset data/raw/fraud-detection.zip` | Validates the original Kaggle archive and prints an aggregate JSON report. |
 

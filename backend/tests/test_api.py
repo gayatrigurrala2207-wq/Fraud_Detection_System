@@ -54,7 +54,8 @@ def test_health_reports_missing_data_without_failing(client):
     assert statuses["API"] == "ok"
     assert statuses["Original dataset"] == "missing"
     assert statuses["Dataset validation"] == "missing"
-    assert statuses["Fraud model"] == "not_available"
+    assert statuses["Fraud model"] == "missing"
+    assert statuses["Database (SQLite)"] == "missing"
 
 
 def test_health_reflects_passing_report(client):

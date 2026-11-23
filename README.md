@@ -1,16 +1,23 @@
 # FraudShield
 
-FraudShield is a local-first portfolio project for scoring financial transactions, explaining fraud risk, and supporting analyst investigations. The current implementation validates the original transaction dataset (Phase 2) and runs a starter website: a FastAPI backend serving health, settings, and dataset validation results, and a React analyst UI with all nine required views. Views whose data comes from later phases show empty states until real results exist; see the [roadmap](docs/roadmap.md).
+FraudShield is a local-first portfolio project for scoring financial transactions, explaining fraud risk, and supporting analyst investigations. From the original Kaggle dataset it builds point-in-time features, compares seven models chronologically, deploys a LightGBM model with SHAP explanations, and replays the 555,719 held-out transactions through the scorer. The React analyst UI covers all nine required views (FR-06 to FR-12) with live data: overview metrics, a live feed, a case workspace, analytics, model reporting, drift monitoring, replay controls with a manual simulator, health, and settings.
 
 ## Run the website
 
-You need two terminals, both opened at the repository root. Prerequisites: [uv](https://docs.astral.sh/uv/getting-started/installation/) and [Node.js](https://nodejs.org/) 20.19 or newer.
+You need two terminals, both opened at the repository root. Prerequisites: [uv](https://docs.astral.sh/uv/getting-started/installation/), [Node.js](https://nodejs.org/) 20.19 or newer, and the Kaggle ZIP at `backend/data/raw/fraud-detection.zip` (see [Validate the original dataset](#validate-the-original-dataset)).
+
+**One-time data build** (about 12 minutes on a laptop CPU). It trains the model, writes reports to `backend/data/reports/` and the model to `backend/data/models/`, loads the replay database at `backend/data/processed/fraudshield.sqlite`, and scores the first 2,000 transactions. Rerunning it replaces the database, including cases and notes.
+
+```sh
+cd backend
+uv sync --locked
+uv run --locked python -m scripts.build_all
+```
 
 **Terminal 1 — backend API** (http://localhost:8000, interactive docs at http://localhost:8000/docs):
 
 ```sh
 cd backend
-uv sync --locked
 uv run --locked python -m uvicorn app.main:app --reload --port 8000
 ```
 
@@ -22,13 +29,22 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173. The **System Health** page should list the API as OK and show the dataset validation results; the Overview shows dataset totals. If a page says it cannot reach the backend, check that terminal 1 is still running. The frontend dev server forwards every `/api` request to port 8000.
+Open http://localhost:5173. While the backend runs, its replay worker scores 5 transactions per second (change the speed, pause, fast-forward, or reset on **Replay & Simulator**). Flagged transactions open cases you can label, annotate, and resolve; set your analyst name under **Settings** so audit events are attributed to you. If a page says it cannot reach the backend, check that terminal 1 is still running. The frontend dev server forwards every `/api` request to port 8000.
 
 | Endpoint | Requirement | Returns |
 | --- | --- | --- |
-| `GET /api/health` | FR-12 | API status and the status of each dependency (dataset, model, PostgreSQL, Kafka, Redis). |
-| `GET /api/dataset/validation` | FR-01 | Aggregate validation results from `backend/data/reports/validation.json`. Never row-level data. |
-| `GET /api/settings` | FR-12 | Active non-secret configuration. |
+| `GET /api/overview` | FR-06 | Processed, flagged, high-risk, potential fraud value, predicted vs confirmed outcomes, latency, with definitions. |
+| `GET /api/transactions` | FR-07 | Live feed with `risk`, `status`, `source`, `q`, and `min_amount` filters. |
+| `GET /api/cases`, `GET /api/cases/{id}` | FR-08 | Case list; case evidence, SHAP explanation, behavioral anomalies, masked card history, notes, audit trail. |
+| `POST /api/cases/{id}/label`, `/notes`, `/resolve`, `/reopen` | FR-08 | Analyst actions, attributed via the `X-Analyst` header and audited. |
+| `GET /api/analytics` | FR-09 | Fraud patterns from publisher labels plus the live score distribution. |
+| `GET /api/models` | FR-10 | Model comparison, test metrics, PR/ROC curves, confusion matrix, feature importance, latency. |
+| `GET /api/monitoring` | FR-10 | PSI drift vs the validation window, confirmed-label performance, experiment runs. |
+| `GET/POST /api/replay`, `POST /api/simulate` | FR-11 | Replay status and controls; score a manual transaction stored as simulated. |
+| `GET /api/health`, `GET /api/settings` | FR-12 | Dependency status and active configuration. |
+| `GET /api/dataset/validation` | FR-01 | Aggregate validation results. Never row-level data. |
+
+Local substitutes, as allowed by decision 006: SQLite stands in for PostgreSQL, and an in-process replay worker stands in for Kafka. Behavioral features are precomputed per transaction instead of kept in Redis. System Health lists these as not configured.
 
 ## Repository layout
 
@@ -38,23 +54,28 @@ Open `Fraud_detection_System` directly as the folder in VS Code. Its workspace s
 Fraud_detection_System/
 ├── backend/                    # Python project: ML, pipelines, API, and tests
 │   ├── app/                    # FastAPI analyst API
-│   │   ├── main.py             # App entry point (uvicorn app.main:app)
-│   │   ├── config.py           # Environment-based settings
-│   │   └── routes/             # health, dataset, settings endpoints
-│   ├── ml/                     # Offline machine learning (imported as ml.*)
-│   │   ├── preprocessing/      # Dataset validation CLI (implemented)
-│   │   ├── notebooks/          # Planned exploratory analysis
-│   │   ├── features/           # Planned feature engineering
-│   │   ├── training/           # Planned model training
-│   │   ├── evaluation/         # Planned model evaluation
-│   │   └── inference/          # Planned scoring
-│   ├── pipelines/              # Streaming transaction flow
-│   │   ├── producers/          # Planned transaction replay
-│   │   └── consumers/          # Planned event validation and scoring
+│   │   ├── main.py             # App entry point (uvicorn app.main:app); starts the replay worker
+│   │   ├── config.py           # Environment-based settings and data locations
+│   │   ├── db.py               # SQLite schema: transactions, cases, notes, audit events
+│   │   ├── replay.py           # Background replay worker
+│   │   ├── services.py         # Shared request dependencies (database, model, analyst)
+│   │   └── routes/             # overview, transactions, cases, insights, replay, health, settings
+│   ├── ml/                     # Machine learning (imported as ml.*)
+│   │   ├── preprocessing/      # Dataset validation CLI and archive loader
+│   │   ├── features/           # Point-in-time feature engineering (FR-03)
+│   │   ├── training/           # Model comparison, selection, and artifact writing (FR-04)
+│   │   ├── evaluation/         # Metrics and cost threshold, drift (PSI), analytics aggregates
+│   │   ├── inference/          # Deployed-model scoring and SHAP explanations
+│   │   └── notebooks/          # Exploratory analysis (reserved)
+│   ├── pipelines/              # Transaction flow
+│   │   ├── producers/          # Loads held-out transactions into the replay queue
+│   │   └── consumers/          # Scores queued transactions and opens cases
 │   ├── data/                   # Local data, ignored by Git except placeholders
 │   │   ├── raw/                # Original Kaggle ZIP, never modified
-│   │   └── reports/            # Generated validation output
-│   ├── scripts/                # Backend developer automation (reserved)
+│   │   ├── reports/            # Validation, model, analytics, and run reports
+│   │   ├── models/             # Deployed model, metadata, drift reference (generated)
+│   │   └── processed/          # SQLite replay database (generated)
+│   ├── scripts/                # build_all.py: one command to build all data
 │   ├── tests/                  # Backend test suite (pytest)
 │   ├── .env.example            # Backend environment template; copy to .env (ignored)
 │   ├── .python-version         # Python 3.12 pin
@@ -63,8 +84,8 @@ Fraud_detection_System/
 │   └── README.md               # Backend command reference
 ├── frontend/                   # React + TypeScript analyst UI (Vite, Tailwind CSS)
 │   ├── src/
-│   │   ├── components/         # Layout with the nine-view sidebar, shared UI pieces
-│   │   ├── pages/              # Overview, System Health, Settings, planned-view empty state
+│   │   ├── components/         # Sidebar layout, charts (Recharts), shared UI pieces
+│   │   ├── pages/              # One page per view, plus the case detail workspace
 │   │   ├── api.ts              # Typed backend client
 │   │   └── main.tsx            # Entry point
 │   ├── index.html
@@ -73,7 +94,8 @@ Fraud_detection_System/
 │   └── vite.config.ts          # Dev server on 5173, proxies /api to the backend
 ├── infrastructure/
 │   └── monitoring/             # Planned experiment tracking and drift monitoring
-├── configs/                    # Shared versioned configuration (reserved)
+├── configs/
+│   └── training.json           # Split date, threshold costs, risk cutoffs, seed
 ├── docs/                       # Requirements, architecture, and development records
 ├── .github/
 │   └── workflows/              # CI workflows (reserved)
@@ -91,7 +113,7 @@ Local-only directories such as `backend/.venv/`, `.uv-cache/`, `.uv-python/`, an
 | Directory | Used by | Responsibility |
 | --- | --- | --- |
 | `backend/` | Backend | Self-contained Python project with its own manifest, lockfile, and virtual environment. |
-| `backend/app/` | Backend | The analyst API service. Today: health, settings, and dataset validation endpoints. Later: scoring, cases, WebSockets, and persistence. |
+| `backend/app/` | Backend | The analyst API service: overview, feed, cases, analytics, models, monitoring, replay, health, and settings endpoints, plus SQLite persistence. |
 | `backend/ml/` | Backend | Offline modeling: dataset validation, features, training, evaluation, and the inference code the API and consumers import. |
 | `backend/pipelines/` | Backend | Event streaming. Producers replay historical transactions; consumers validate, enrich, and score them. |
 | `backend/data/` | Backend | Local datasets and generated reports. Contents are ignored by Git; only folder placeholders are tracked. |
@@ -105,7 +127,7 @@ Local-only directories such as `backend/.venv/`, `.uv-cache/`, `.uv-python/`, an
 
 ### How the components interact
 
-In the planned application, the replay producer in `backend/pipelines/producers` publishes transactions read from `backend/data/raw`. The consumer in `backend/pipelines/consumers` validates each event, builds features with `backend/ml/features`, and scores it with `backend/ml/inference`. Scores and cases are persisted and exposed by the API in `backend/app` to the UI in `frontend/`. `infrastructure/` hosts the local services and monitoring. See [Architecture](docs/architecture.md) for the full flow.
+`scripts/build_all.py` reads `backend/data/raw`, computes features with `ml/features`, and trains and evaluates with `ml/training` and `ml/evaluation` using `configs/training.json`. It then has the producer in `pipelines/producers` load the held-out test file into SQLite, with card numbers replaced by keyed pseudonyms and no names, addresses, or labels stored. While the API runs, its replay worker calls the consumer in `pipelines/consumers`. The consumer scores each queued transaction with `ml/inference` and opens a case when the score meets the threshold. The UI in `frontend/` reads everything through `/api`. See [Architecture](docs/architecture.md) for the full flow.
 
 ## Local setup
 
